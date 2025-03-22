@@ -28,44 +28,47 @@ app.post('/order', async (req, res) => {
     }
 });
 
-// Listen to Shipment Completion from Kafka
-const listenForShipment = async () => {
+const listenToTopic = async () => {
     await orderConsumer.connect();
     await orderConsumer.subscribe({topic: 'shipment-success', fromBeginning: true});
+    await orderConsumer.subscribe({topic: 'payment-failed', fromBeginning: true});
+
+    async function saveOrder(rawOrder, orderId) {
+        if (rawOrder) {
+            const order = new OrderModel({id: orderId, price: JSON.parse(rawOrder).price});
+            await order.save();
+            console.log(`Order ${orderId} completed.`);
+            await redis.del(orderId);
+        } else {
+            console.log('Cannot find order with id ' + orderId);
+        }
+    }
+
+    async function rollbackOrder(orderId) {
+        await redis.del(orderId);
+        console.log(`delete order ${orderId} because of payment failed`);
+    }
 
     await orderConsumer.run({
-        eachMessage: async ({message}) => {
-            const {orderId} = JSON.parse(message.value.toString());
+        eachMessage: async ({topic, message}) => {
+            const { orderId } = JSON.parse(message.value.toString());
             const rawOrder = await redis.get(orderId);
             console.log(`read order form topic ${orderId}, rawOrder: ${JSON.stringify(rawOrder)}`);
 
-            if (rawOrder) {
-                const order = new OrderModel({id: orderId, price: JSON.parse(rawOrder).price});
-                await order.save();
-                console.log(`Order ${orderId} completed.`);
-                await redis.del(orderId);
-            } else {
-                console.log('Cannot find order with id ' + orderId);
+            switch (topic) {
+                case 'shipment-success':
+                    await saveOrder(rawOrder, orderId);
+                    break;
+                case 'payment-failed':
+                    await rollbackOrder(orderId);
+                    break;
+                default:
+                    console.log(`Received message from unknown topic ${topic}:`, value);
             }
         },
     });
 };
 
-const listenForPayment = async () => {
-    await orderConsumer.connect();
-    await orderConsumer.subscribe({topic: 'payment-failed', fromBeginning: true});
-
-    await orderConsumer.run({
-        eachMessage: async ({message}) => {
-            const { orderId } = JSON.parse(message.value.toString());
-            console.log(`read failed order form topic ${orderId}`);
-            await redis.del(orderId);
-            console.log(`delete order ${orderId} because of payment failed`);
-        },
-    });
-};
-
-listenForShipment();
-listenForPayment();
+listenToTopic();
 
 app.listen(4001, () => console.log('Order service running on port 4001'));
