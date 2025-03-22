@@ -1,0 +1,70 @@
+version: '3.8'
+services:
+  redis:
+    image: redis
+    container_name: my-redis
+    restart: always
+    ports:
+      - "6379:6379"
+  mongodb:
+    image: mongo
+    container_name: my-mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+#    volumes:
+#      - mongodb_data:/data/db
+#    environment:
+#      MONGO_INITDB_ROOT_USERNAME: root
+#      MONGO_INITDB_ROOT_PASSWORD: rootpassword
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: my-zookeeper
+    restart: always
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: my-kafka
+    restart: always
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: my-zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+#  order-service:
+#    build: ./order-service
+#    container_name: order-service
+#    restart: always
+#    depends_on:
+#      - mongodb
+#      - kafka
+#    ports:
+#      - "4001:4001"
+#    environment:
+#      MONGO_URI: mongodb://root:rootpassword@mongodb:27017/orders
+#      KAFKA_BROKER: kafka:9092
+#
+#  payment-service:
+#    build: ./payment-service
+#    container_name: payment-service
+#    restart: always
+#    depends_on:
+#      - mongodb
+#      - kafka
+#    ports:
+#      - "4002:4002"
+#    environment:
+#      MONGO_URI: mongodb://root:rootpassword@mongodb:27017/payments
+#      KAFKA_BROKER: kafka:9092
+#  volumes:
+#    mongodb_data:
